@@ -4,6 +4,8 @@ import * as path from 'path';
 import * as os from 'os';
 import * as vscode from 'vscode';
 import * as yauzl from 'yauzl';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { exec } = require('child_process');
 
 interface GitHubAsset {
     name: string;
@@ -17,16 +19,17 @@ interface GitHubRelease {
 }
 
 /**
- * Fetches the latest release info for CLIProxyAPI from GitHub
+ * Fetches the latest release info for copilot-cli from GitHub
+ * @note This points to the official repository.
  */
 async function fetchLatestRelease(): Promise<GitHubRelease> {
     return new Promise((resolve, reject) => {
         const options = {
             hostname: 'api.github.com',
-            path: '/repos/router-for-me/CLIProxyAPI/releases/latest',
+            path: '/repos/github/copilot-cli/releases/latest',
             method: 'GET',
             headers: {
-                'User-Agent': 'vscode-antigravity-copilot',
+                'User-Agent': 'vscode-copilot-openroute',
                 'Accept': 'application/vnd.github+json'
             }
         };
@@ -37,7 +40,7 @@ async function fetchLatestRelease(): Promise<GitHubRelease> {
             if (res.statusCode === 403) {
                 const remaining = res.headers['x-ratelimit-remaining'];
                 const reset = res.headers['x-ratelimit-reset'];
-                const resetTime = reset ? new Date(parseInt(reset, 10) * 1000).toLocaleTimeString() : 'unknown';
+                const resetTime = reset ? new Date(parseInt(String(reset), 10) * 1000).toLocaleTimeString() : 'unknown';
                 reject(new Error(`GitHub API rate limit exceeded. Remaining: ${remaining}, Reset at: ${resetTime}`));
                 return;
             }
@@ -65,15 +68,35 @@ async function fetchLatestRelease(): Promise<GitHubRelease> {
 }
 
 /**
- * Finds the correct Windows asset in the release
+ * Finds the correct asset based on platform
  */
-function findWindowsAsset(assets: GitHubAsset[]): GitHubAsset | undefined {
-    const arch = process.arch;
-    const archPattern = arch === 'arm64' ? 'arm64' : arch === 'ia32' ? '386' : 'amd64';
+function findAsset(assets: GitHubAsset[]): GitHubAsset | undefined {
+    const platform = os.platform(); // win32, darwin, linux
+    const arch = os.arch(); // x64, arm64, etc.
+
+    // Naming patterns:
+    // Windows: copilot-win32-x64.zip, copilot-win32-arm64.zip
+    // MacOS: copilot-darwin-x64.tar.gz, copilot-darwin-arm64.tar.gz
+    // Linux: copilot-linux-x64.tar.gz, copilot-linux-arm64.tar.gz
+
+    const searchTerms: string[] = [];
+
+    if (platform === 'win32') {
+        searchTerms.push('copilot-win32');
+        searchTerms.push(arch === 'arm64' ? 'arm64' : (arch === 'ia32' ? '386' : 'x64')); // Note: Official usually uses x64
+        searchTerms.push('.zip');
+    } else if (platform === 'darwin') {
+        searchTerms.push('copilot-darwin');
+        searchTerms.push(arch === 'arm64' ? 'arm64' : 'x64');
+        searchTerms.push('.tar.gz');
+    } else if (platform === 'linux') {
+        searchTerms.push('copilot-linux');
+        searchTerms.push(arch === 'arm64' ? 'arm64' : 'x64');
+        searchTerms.push('.tar.gz');
+    }
+
     return assets.find(asset =>
-        asset.name.toLowerCase().includes('windows') &&
-        asset.name.toLowerCase().includes(archPattern) &&
-        asset.name.endsWith('.zip')
+        searchTerms.every(term => asset.name.toLowerCase().includes(term))
     );
 }
 
@@ -83,7 +106,7 @@ function findWindowsAsset(assets: GitHubAsset[]): GitHubAsset | undefined {
 async function downloadFile(url: string, dest: string, onProgress: (percent: number) => void): Promise<void> {
     return new Promise((resolve, reject) => {
         const file = fs.createWriteStream(dest);
-        const timeout = 300000;
+        const timeout = 300000; // 5 mins
 
         const request = https.get(url, (response) => {
             if (response.statusCode === 302 || response.statusCode === 301) {
@@ -91,7 +114,7 @@ async function downloadFile(url: string, dest: string, onProgress: (percent: num
                 if (redirectUrl) {
                     response.destroy();
                     file.close();
-                    fs.unlink(dest, () => {});
+                    fs.unlink(dest, () => { });
                     downloadFile(redirectUrl, dest, onProgress).then(resolve).catch(reject);
                     return;
                 }
@@ -100,7 +123,7 @@ async function downloadFile(url: string, dest: string, onProgress: (percent: num
             if (response.statusCode !== 200) {
                 response.resume();
                 file.close();
-                fs.unlink(dest, () => {});
+                fs.unlink(dest, () => { });
                 reject(new Error(`Server returned status ${response.statusCode}`));
                 return;
             }
@@ -110,13 +133,11 @@ async function downloadFile(url: string, dest: string, onProgress: (percent: num
             let timeoutTimer: NodeJS.Timeout;
 
             const resetTimeout = () => {
-                if (timeoutTimer) {
-                    clearTimeout(timeoutTimer);
-                }
+                if (timeoutTimer) clearTimeout(timeoutTimer);
                 timeoutTimer = setTimeout(() => {
                     request.destroy();
                     file.close();
-                    fs.unlink(dest, () => {});
+                    fs.unlink(dest, () => { });
                     reject(new Error('Download timeout'));
                 }, timeout);
             };
@@ -134,31 +155,56 @@ async function downloadFile(url: string, dest: string, onProgress: (percent: num
             response.pipe(file);
 
             file.on('finish', () => {
-                if (timeoutTimer) {
-                    clearTimeout(timeoutTimer);
-                }
+                if (timeoutTimer) clearTimeout(timeoutTimer);
                 file.close();
                 resolve();
             });
         });
 
         request.on('error', (err) => {
-            fs.unlink(dest, () => {});
+            fs.unlink(dest, () => { });
             reject(err);
-        });
-
-        request.setTimeout(timeout, () => {
-            request.destroy();
-            file.close();
-            fs.unlink(dest, () => {});
-            reject(new Error('Download request timeout'));
         });
     });
 }
 
 /**
- * Extracts a ZIP file to a target directory
+ * Extracts an archive (ZIP or tar.gz) to a target directory
  */
+async function extractArchive(archivePath: string, targetDir: string): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const ext = path.extname(archivePath).toLowerCase();
+
+    // Check for .tar.gz (double extension)
+    const isTarGz = archivePath.toLowerCase().endsWith('.tar.gz') || archivePath.toLowerCase().endsWith('.tgz');
+
+    if (isTarGz) {
+        return extractTarGz(archivePath, targetDir);
+    } else {
+        return extractZip(archivePath, targetDir);
+    }
+}
+
+async function extractTarGz(archivePath: string, targetDir: string): Promise<void> {
+    // Ensure target exists
+    if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+    }
+
+    return new Promise((resolve, reject) => {
+        // Use system tar command. Windows 10+ has tar. Unix has tar.
+        // Command: tar -xzf <archive> -C <targetDir>
+        const cmd = `tar -xzf "${archivePath}" -C "${targetDir}"`;
+        exec(cmd, (err: any, stdout: any, stderr: any) => {
+            if (err) {
+                reject(new Error(`Tar extraction failed: ${stderr || err.message}`));
+            } else {
+                resolve();
+            }
+        });
+    });
+}
+
 async function extractZip(zipPath: string, targetDir: string): Promise<void> {
     return new Promise((resolve, reject) => {
         yauzl.open(zipPath, { lazyEntries: true }, (err, zipfile) => {
@@ -181,7 +227,7 @@ async function extractZip(zipPath: string, targetDir: string): Promise<void> {
 
                 if (!entryPath.startsWith(absoluteTargetDir + path.sep)) {
                     closeZipFile();
-                    reject(new Error(`Zip Slip detected: ${entry.fileName} escapes target directory`));
+                    reject(new Error(`Zip Slip detected: ${entry.fileName}`));
                     return;
                 }
 
@@ -201,19 +247,25 @@ async function extractZip(zipPath: string, targetDir: string): Promise<void> {
                         }
 
                         const writeStream = fs.createWriteStream(entryPath);
-                        readStream.on('error', (err) => {
-                            writeStream.destroy();
-                            closeZipFile();
-                            fs.unlink(entryPath, () => {});
-                            reject(err);
-                        });
                         readStream.pipe(writeStream);
+
                         writeStream.on('finish', () => {
+                            // If on linux/mac, ensure executable permission if it looks like a binary
+                            if (process.platform !== 'win32') {
+                                // Simple heuristic: if no extension or .sh, chmod +x
+                                if (!path.extname(entryPath) || entryPath.endsWith('.sh')) {
+                                    fs.chmodSync(entryPath, '755');
+                                }
+                            }
                             zipfile.readEntry();
                         });
+
                         writeStream.on('error', (err) => {
                             closeZipFile();
-                            fs.unlink(entryPath, () => {});
+                            reject(err);
+                        });
+                        readStream.on('error', (err) => {
+                            closeZipFile();
                             reject(err);
                         });
                     });
@@ -234,22 +286,29 @@ async function extractZip(zipPath: string, targetDir: string): Promise<void> {
 }
 
 /**
- * Finds cli-proxy-api.exe recursively in a directory
+ * Finds the executable recursively
  */
 function findExecutable(targetDir: string): string | null {
-    const targetPath = path.join(targetDir, 'cli-proxy-api.exe');
-    if (fs.existsSync(targetPath)) {
-        return targetPath;
+    // Look for copilot.exe or cli-proxy-api.exe or copilot (no ext)
+    const platform = os.platform();
+    const candidates = platform === 'win32'
+        ? ['copilot.exe', 'cli-proxy-api.exe']
+        : ['copilot', 'cli-proxy-api'];
+
+    const items = fs.readdirSync(targetDir, { withFileTypes: true });
+
+    // Check files in current dir
+    for (const item of items) {
+        if (item.isFile() && candidates.includes(item.name.toLowerCase())) {
+            return path.join(targetDir, item.name);
+        }
     }
 
-    const subdirs = fs.readdirSync(targetDir, { withFileTypes: true })
-        .filter(dirent => dirent.isDirectory())
-        .map(dirent => path.join(targetDir, dirent.name));
-
-    for (const subdir of subdirs) {
-        const found = findExecutable(subdir);
-        if (found) {
-            return found;
+    // Recurse
+    for (const item of items) {
+        if (item.isDirectory()) {
+            const found = findExecutable(path.join(targetDir, item.name));
+            if (found) return found;
         }
     }
 
@@ -257,58 +316,63 @@ function findExecutable(targetDir: string): string | null {
 }
 
 /**
- * Main orchestration for installing CLIProxyAPI
+ * Main orchestration for installing CLI
  */
-export async function installCLIProxyAPI(
+export async function installCopilotCLI(
     onProgress: (percent: number) => void,
     outputChannel?: vscode.OutputChannel
 ): Promise<{ success: boolean; version: string; executablePath?: string; error?: string }> {
     const tempDir = os.tmpdir();
-    const zipPath = path.join(tempDir, 'CLIProxyAPI.zip');
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const zipPath = path.join(tempDir, 'CopilotCLI-Install.zip');
     const userProfile = process.env.USERPROFILE || os.homedir();
-    const targetDir = path.join(userProfile, 'CLIProxyAPI');
+    const targetDir = path.join(userProfile, '.openroute', 'bin'); // More standard location
 
     try {
-        outputChannel?.appendLine('[INFO] Fetching latest CLIProxyAPI release information...');
+        outputChannel?.appendLine('[Installer] Fetching latest release information...');
         const release = await fetchLatestRelease();
-        const asset = findWindowsAsset(release.assets);
+        const asset = findAsset(release.assets);
 
         if (!asset) {
-            return { success: false, version: '', error: 'Could not find Windows amd64 ZIP in the latest release' };
+            return { success: false, version: '', error: `No compatible asset found for ${os.platform()}-${os.arch()}` };
         }
 
-        outputChannel?.appendLine(`[INFO] Downloading CLIProxyAPI ${release.tag_name} from: ${asset.browser_download_url}`);
-        await downloadFile(asset.browser_download_url, zipPath, onProgress);
+        outputChannel?.appendLine(`[Installer] Downloading from: ${asset.browser_download_url}`);
+        outputChannel?.appendLine(`[Installer] Downloading from: ${asset.browser_download_url}`);
+        const archiveName = path.basename(asset.browser_download_url);
+        const archivePath = path.join(tempDir, archiveName);
 
-        outputChannel?.appendLine(`[INFO] Extracting to: ${targetDir}`);
-        if (!fs.existsSync(targetDir)) {
-            fs.mkdirSync(targetDir, { recursive: true });
+        await downloadFile(asset.browser_download_url, archivePath, onProgress);
+
+        outputChannel?.appendLine(`[Installer] Extracting to: ${targetDir}`);
+        if (fs.existsSync(targetDir)) {
+            // Optional: clean up old dir? Or just overwrite.
+            // fs.rmSync(targetDir, { recursive: true, force: true });
         }
-        await extractZip(zipPath, targetDir);
+        await extractArchive(archivePath, targetDir);
 
         const foundExecutable = findExecutable(targetDir);
         if (foundExecutable) {
-            outputChannel?.appendLine(`[INFO] Found executable at: ${foundExecutable}`);
+            outputChannel?.appendLine(`[Installer] Found executable at: ${foundExecutable}`);
+            // Update configuration
+            await vscode.workspace.getConfiguration('openroute.server').update('executablePath', foundExecutable, vscode.ConfigurationTarget.Global);
+            outputChannel?.appendLine('[Installer] Configuration updated.');
         } else {
-            outputChannel?.appendLine(`[WARN] Could not find cli-proxy-api.exe in ${targetDir}`);
+            outputChannel?.appendLine(`[Installer] WARN: Could not find executable in ${targetDir}`);
         }
 
-        if (fs.existsSync(zipPath)) {
-            fs.unlinkSync(zipPath);
+        if (fs.existsSync(archivePath)) {
+            fs.unlinkSync(archivePath);
         }
 
-        outputChannel?.appendLine('[INFO] CLIProxyAPI installed successfully');
+        outputChannel?.appendLine('[Installer] Installation complete.');
         return { success: true, version: release.tag_name, executablePath: foundExecutable || undefined };
     } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        outputChannel?.appendLine(`[ERROR] Installation failed: ${msg}`);
+        outputChannel?.appendLine(`[Installer] Error: ${msg}`);
 
         if (fs.existsSync(zipPath)) {
-            try {
-                fs.unlinkSync(zipPath);
-            } catch (cleanupError) {
-                outputChannel?.appendLine(`[WARN] Failed to cleanup temp file: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
-            }
+            try { fs.unlinkSync(zipPath); } catch (e) { /* ignore */ }
         }
 
         return { success: false, version: '', error: msg };

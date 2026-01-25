@@ -22,11 +22,11 @@ export interface ModelInfo {
 
 // Fallback static models (used when server is not available)
 // URL is a placeholder that gets rewritten by rewriteModelUrls() in extension.ts
-const PLACEHOLDER_URL = "http://127.0.0.1:8317/v1";
+const PLACEHOLDER_URL = "http://127.0.0.1:9317/v1";
 
-export const ANTIGRAVITY_MODELS: Record<string, CopilotModelConfig> = {
+export const OPENROUTE_MODELS: Record<string, CopilotModelConfig> = {
     "gemini-claude-sonnet-4-5": {
-        "name": "Antigravity: Claude Sonnet 4.5",
+        "name": "OpenRoute: Claude Sonnet 4.5",
         "url": PLACEHOLDER_URL,
         "model": "gemini-claude-sonnet-4-5",
         "toolCalling": true,
@@ -37,7 +37,7 @@ export const ANTIGRAVITY_MODELS: Record<string, CopilotModelConfig> = {
         "requiresAPIKey": false
     },
     "gemini-claude-sonnet-4-5-thinking": {
-        "name": "Antigravity: Claude Sonnet 4.5 (Thinking)",
+        "name": "OpenRoute: Claude Sonnet 4.5 (Thinking)",
         "url": PLACEHOLDER_URL,
         "model": "gemini-claude-sonnet-4-5-thinking",
         "toolCalling": true,
@@ -48,7 +48,7 @@ export const ANTIGRAVITY_MODELS: Record<string, CopilotModelConfig> = {
         "requiresAPIKey": false
     },
     "gemini-claude-opus-4-5-thinking": {
-        "name": "Antigravity: Claude Opus 4.5 (Thinking)",
+        "name": "OpenRoute: Claude Opus 4.5 (Thinking)",
         "url": PLACEHOLDER_URL,
         "model": "gemini-claude-opus-4-5-thinking",
         "toolCalling": true,
@@ -59,7 +59,7 @@ export const ANTIGRAVITY_MODELS: Record<string, CopilotModelConfig> = {
         "requiresAPIKey": false
     },
     "gemini-2.5-flash": {
-        "name": "Antigravity: Gemini 2.5 Flash",
+        "name": "OpenRoute: Gemini 2.5 Flash",
         "url": PLACEHOLDER_URL,
         "model": "gemini-2.5-flash",
         "toolCalling": true,
@@ -70,7 +70,7 @@ export const ANTIGRAVITY_MODELS: Record<string, CopilotModelConfig> = {
         "requiresAPIKey": false
     },
     "gemini-2.5-flash-lite": {
-        "name": "Antigravity: Gemini 2.5 Flash Lite",
+        "name": "OpenRoute: Gemini 2.5 Flash Lite",
         "url": PLACEHOLDER_URL,
         "model": "gemini-2.5-flash-lite",
         "toolCalling": true,
@@ -81,7 +81,7 @@ export const ANTIGRAVITY_MODELS: Record<string, CopilotModelConfig> = {
         "requiresAPIKey": false
     },
     "gemini-3-pro-preview": {
-        "name": "Antigravity: Gemini 3 Pro (Preview)",
+        "name": "OpenRoute: Gemini 3 Pro (Preview)",
         "url": PLACEHOLDER_URL,
         "model": "gemini-3-pro-preview",
         "toolCalling": true,
@@ -92,7 +92,7 @@ export const ANTIGRAVITY_MODELS: Record<string, CopilotModelConfig> = {
         "requiresAPIKey": false
     },
     "gemini-3-flash-preview": {
-        "name": "Antigravity: Gemini 3 Flash (Preview)",
+        "name": "OpenRoute: Gemini 3 Flash (Preview)",
         "url": PLACEHOLDER_URL,
         "model": "gemini-3-flash-preview",
         "toolCalling": true,
@@ -103,7 +103,7 @@ export const ANTIGRAVITY_MODELS: Record<string, CopilotModelConfig> = {
         "requiresAPIKey": false
     },
     "gemini-3-pro-image-preview": {
-        "name": "Antigravity: Gemini 3 Pro Image (Preview)",
+        "name": "OpenRoute: Gemini 3 Pro Image (Preview)",
         "url": PLACEHOLDER_URL,
         "model": "gemini-3-pro-image-preview",
         "toolCalling": true,
@@ -114,7 +114,7 @@ export const ANTIGRAVITY_MODELS: Record<string, CopilotModelConfig> = {
         "requiresAPIKey": false
     },
     "gemini-2.5-computer-use-preview-10-2025": {
-        "name": "Antigravity: Gemini 2.5 Computer Use (Preview)",
+        "name": "OpenRoute: Gemini 2.5 Computer Use (Preview)",
         "url": PLACEHOLDER_URL,
         "model": "gemini-2.5-computer-use-preview-10-2025",
         "toolCalling": true,
@@ -125,7 +125,7 @@ export const ANTIGRAVITY_MODELS: Record<string, CopilotModelConfig> = {
         "requiresAPIKey": false
     },
     "gpt-oss-120b-medium": {
-        "name": "Antigravity: gpt-oss-120b-medium",
+        "name": "OpenRoute: gpt-oss-120b-medium",
         "url": PLACEHOLDER_URL,
         "model": "gpt-oss-120b-medium",
         "toolCalling": false,
@@ -160,7 +160,7 @@ interface OpenAIModelsResponse {
 }
 
 /**
- * Fetches models dynamically from CLIProxyAPI's /v1/models endpoint
+ * Fetches models dynamically from OpenRoute API
  */
 export async function fetchModelsFromServer(host: string, port: number): Promise<Record<string, CopilotModelConfig>> {
     return new Promise((resolve, reject) => {
@@ -190,8 +190,7 @@ export async function fetchModelsFromServer(host: string, port: number): Promise
                         const serverUrl = `http://${host}:${port}/v1`;
 
                         // Prefer known, curated model specs where available.
-                        // This avoids advertising unrealistic token limits that can cause immediate upstream 429s.
-                        const known = ANTIGRAVITY_MODELS[modelId];
+                        const known = OPENROUTE_MODELS[modelId];
                         if (known) {
                             models[modelId] = {
                                 ...known,
@@ -203,7 +202,7 @@ export async function fetchModelsFromServer(host: string, port: number): Promise
 
                         const displayName = formatModelName(modelId);
                         models[modelId] = {
-                            name: `Antigravity: ${displayName}`,
+                            name: `OpenRoute: ${displayName}`,
                             url: serverUrl,
                             model: modelId,
                             toolCalling: inferToolCalling(modelId),
@@ -235,65 +234,46 @@ export async function fetchModelsFromServer(host: string, port: number): Promise
     });
 }
 
-/**
- * Format model ID into a human-readable display name
- */
 function formatModelName(modelId: string): string {
-    // Handle specific known patterns
     if (modelId.includes('claude')) {
         if (modelId.includes('opus')) {
-            if (modelId.includes('thinking')) {
-                return 'Claude Opus 4.5 (Thinking)';
-            }
+            if (modelId.includes('thinking')) return 'Claude Opus 4.5 (Thinking)';
             return 'Claude Opus 4.5';
         }
         if (modelId.includes('sonnet')) {
-            if (modelId.includes('thinking')) {
-                return 'Claude Sonnet 4.5 (Thinking)';
-            }
+            if (modelId.includes('thinking')) return 'Claude Sonnet 4.5 (Thinking)';
             return 'Claude Sonnet 4.5';
         }
     }
-    
+
     if (modelId.includes('gemini')) {
-        // Clean up gemini model names
         let name = modelId
             .replace('gemini-', 'Gemini ')
             .replace(/-preview.*$/, ' (Preview)')
             .replace(/-/g, ' ');
-        
-        // Capitalize properly
         name = name.replace(/\b\w/g, c => c.toUpperCase());
         return name;
     }
 
-    // Default: capitalize and replace dashes
     return modelId
         .split('-')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
 }
 
-/**
- * Model family specifications - easy to update when specs change
- * These are used to infer capabilities from model IDs
- */
 const MODEL_SPECS = {
     gemini: {
-        flash: { context: 1048576, output: 8192 },      // 1M context
-        pro: { context: 2097152, output: 8192 },        // 2M context
-        default: { context: 1048576, output: 8192 }     // 1M default
+        flash: { context: 1048576, output: 8192 },
+        pro: { context: 2097152, output: 8192 },
+        default: { context: 1048576, output: 8192 }
     },
     claude: {
-        default: { context: 200000, output: 8192 }      // 200k context
+        default: { context: 200000, output: 8192 }
     },
     gpt4: {
         default: { context: 128000, output: 4096 }
     },
     thinking: {
-        // Keep thinking context and outputs very conservative.
-        // Advertising huge token limits causes Copilot to request overly large generations,
-        // which quickly trips upstream provider quotas (429 RESOURCE_EXHAUSTED).
         maxContext: 32000,
         maxOutput: 2048
     },
@@ -303,75 +283,37 @@ const MODEL_SPECS = {
     }
 };
 
-/**
- * Infer context window size based on model ID
- */
 function inferContextWindow(modelId: string): number {
     const id = modelId.toLowerCase();
-    
-    // Thinking models get reduced context to avoid quota exhaustion
-    if (id.includes('thinking')) {
-        return MODEL_SPECS.thinking.maxContext;
-    }
-    
+    if (id.includes('thinking')) return MODEL_SPECS.thinking.maxContext;
     if (id.includes('gemini')) {
         if (id.includes('flash')) return MODEL_SPECS.gemini.flash.context;
         if (id.includes('pro')) return MODEL_SPECS.gemini.pro.context;
         return MODEL_SPECS.gemini.default.context;
     }
-
-    if (id.includes('claude')) {
-        return MODEL_SPECS.claude.default.context;
-    }
-
-    if (id.includes('gpt-4')) {
-        return MODEL_SPECS.gpt4.default.context;
-    }
-
+    if (id.includes('claude')) return MODEL_SPECS.claude.default.context;
+    if (id.includes('gpt-4')) return MODEL_SPECS.gpt4.default.context;
     return MODEL_SPECS.fallback.context;
 }
 
-/**
- * Infer max output tokens based on model ID
- */
 function inferMaxOutputTokens(modelId: string): number {
     const id = modelId.toLowerCase();
-
-    // Thinking models get strict output limit
-    if (id.includes('thinking')) {
-        return MODEL_SPECS.thinking.maxOutput;
-    }
-
-    if (id.includes('gemini')) {
-        return MODEL_SPECS.gemini.default.output;
-    }
-    
-    if (id.includes('claude')) {
-        return MODEL_SPECS.claude.default.output;
-    }
-
+    if (id.includes('thinking')) return MODEL_SPECS.thinking.maxOutput;
+    if (id.includes('gemini')) return MODEL_SPECS.gemini.default.output;
+    if (id.includes('claude')) return MODEL_SPECS.claude.default.output;
     return MODEL_SPECS.fallback.output;
 }
 
-/**
- * Infer if a model supports tool calling based on its ID
- */
 function inferToolCalling(modelId: string): boolean {
     const noToolModels = ['gpt-oss', 'basic'];
     return !noToolModels.some(pattern => modelId.toLowerCase().includes(pattern));
 }
 
-/**
- * Infer if a model supports vision based on its ID
- */
 function inferVision(modelId: string): boolean {
     const visionKeywords = ['image', 'vision', 'computer-use', 'multimodal'];
     return visionKeywords.some(keyword => modelId.toLowerCase().includes(keyword));
 }
 
-/**
- * Infer if a model supports thinking/reasoning based on its ID
- */
 function inferThinking(modelId: string): boolean {
     return modelId.toLowerCase().includes('thinking');
 }

@@ -1,8 +1,8 @@
 {
-  "name": "antigravity-copilot",
-  "displayName": "Antigravity for Copilot",
-  "description": "Use Google Antigravity models (Claude, Gemini) in GitHub Copilot Chat via CLIProxyAPI",
-  "version": "1.6.0",
+  "name": "copilot-openroute",
+  "displayName": "Copilot OpenRoute",
+  "description": "OpenRoute Gateway for GitHub Copilot: Use Copilot models in any OpenAI-compatible tool",
+  "version": "1.0.0",
   "publisher": "punal100",
   "icon": "media/icon.png",
   "engines": {
@@ -15,12 +15,12 @@
     "Programming Languages"
   ],
   "keywords": [
-    "antigravity",
+    "openroute",
     "copilot",
-    "claude",
-    "gemini",
+    "gateway",
+    "proxy",
     "ai",
-    "cli-proxy-api"
+    "openai"
   ],
   "activationEvents": [
     "onStartupFinished"
@@ -29,273 +29,68 @@
   "contributes": {
     "commands": [
       {
-        "command": "antigravity-copilot.startServer",
-        "title": "Start Antigravity Server",
-        "category": "Antigravity"
+        "command": "openroute.start",
+        "title": "Start OpenRoute Gateway",
+        "category": "OpenRoute"
       },
       {
-        "command": "antigravity-copilot.stopServer",
-        "title": "Stop Antigravity Server",
-        "category": "Antigravity"
+        "command": "openroute.stop",
+        "title": "Stop OpenRoute Gateway",
+        "category": "OpenRoute"
       },
       {
-        "command": "antigravity-copilot.restartServer",
-        "title": "Restart Antigravity Server",
-        "category": "Antigravity"
+        "command": "openroute.showDashboard",
+        "title": "Show Dashboard",
+        "category": "OpenRoute"
       },
       {
-        "command": "antigravity-copilot.showServerControls",
-        "title": "Show Server Controls",
-        "category": "Antigravity"
-      },
-      {
-        "command": "antigravity-copilot.configureModels",
-        "title": "Configure Copilot Models",
-        "category": "Antigravity"
-      },
-      {
-        "command": "antigravity-copilot.loginAntigravity",
-        "title": "Login to Antigravity",
-        "category": "Antigravity"
-      },
-      {
-        "command": "antigravity-copilot.rateLimitStatus",
-        "title": "Rate Limit Status",
-        "category": "Antigravity"
+        "command": "openroute.login",
+        "title": "Login to GitHub Copilot",
+        "category": "OpenRoute"
       }
     ],
     "configuration": {
-      "title": "Antigravity for Copilot",
+      "title": "Copilot OpenRoute",
       "properties": {
-        "antigravityCopilot.server.enabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable the Antigravity server on startup"
+        "openroute.server.port": {
+          "type": "number",
+          "default": 9317,
+          "description": "Port for OpenRoute Gateway"
         },
-        "antigravityCopilot.server.autoStart": {
-          "type": "boolean",
-          "default": false,
-          "description": "Automatically start the server when VS Code opens"
-        },
-        "antigravityCopilot.server.executablePath": {
+        "openroute.server.executablePath": {
           "type": "string",
-          "default": "",
-          "description": "Path to cli-proxy-api.exe (leave empty to auto-detect in %USERPROFILE%\\CLIProxyAPI)"
-        },
-        "antigravityCopilot.server.port": {
-          "type": "number",
-          "default": 8317,
-          "description": "Starting port for CLIProxyAPI server (will try next available if in use)"
-        },
-        "antigravityCopilot.server.host": {
-          "type": "string",
-          "default": "127.0.0.1",
-          "description": "Host address for CLIProxyAPI server"
-        },
-        "antigravityCopilot.autoConfigureCopilot": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically configure Copilot Chat custom models on startup"
-        },
-        "antigravityCopilot.copilot.providerGroupName": {
-          "type": "string",
-          "default": "Antigravity",
-          "description": "Name of the Copilot 'OpenAI Compatible' provider group to create/update (this appears in chatLanguageModels.json)."
-        },
-        "antigravityCopilot.showNotifications": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show notifications for server events"
-        },
-        "antigravityCopilot.rateLimit.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable rate limiting to prevent 429 errors with Antigravity models"
-        },
-        "antigravityCopilot.rateLimit.cooldownMs": {
-          "type": "number",
-          "default": 5000,
-          "minimum": 1000,
-          "maximum": 120000,
-          "description": "Base cooldown period in milliseconds between requests (short since we use aggressive retries like Antigravity IDE)"
-        },
-        "antigravityCopilot.rateLimit.showNotifications": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show notifications when requests are blocked due to rate limiting"
-        },
-        "antigravityCopilot.proxy.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable a local throttling proxy (queues Copilot requests to reduce upstream 429s). When enabled, configured model URLs will point to this proxy instead of directly to CLIProxyAPI."
-        },
-        "antigravityCopilot.proxy.host": {
-          "type": "string",
-          "default": "127.0.0.1",
-          "description": "Bind host for the throttling proxy server"
-        },
-        "antigravityCopilot.proxy.port": {
-          "type": "number",
-          "default": 8420,
-          "minimum": 1024,
-          "maximum": 65535,
-          "description": "Starting port for the throttling proxy server (will try next available if in use)"
-        },
-        "antigravityCopilot.proxy.rewriteMaxTokens": {
-          "type": "boolean",
-          "default": true,
-          "description": "When enabled, the proxy will clamp max output tokens in requests to reduce long generations that often trigger upstream 429s."
-        },
-        "antigravityCopilot.proxy.truncateToolOutput": {
-          "type": "boolean",
-          "default": true,
-          "description": "When enabled, the proxy will truncate very large tool outputs in the prompt history (e.g., git diff) to reduce context size and avoid upstream quota exhaustion."
-        },
-        "antigravityCopilot.proxy.maxToolOutputChars": {
-          "type": "number",
-          "default": 12000,
-          "minimum": 1000,
-          "maximum": 200000,
-          "description": "Maximum characters to keep for each tool output message after truncation."
-        },
-        "antigravityCopilot.proxy.toolOutputHeadChars": {
-          "type": "number",
-          "default": 6000,
-          "minimum": 0,
-          "maximum": 200000,
-          "description": "Characters to keep from the start of a tool output when truncating."
-        },
-        "antigravityCopilot.proxy.toolOutputTailChars": {
-          "type": "number",
-          "default": 2000,
-          "minimum": 0,
-          "maximum": 200000,
-          "description": "Characters to keep from the end of a tool output when truncating."
-        },
-        "antigravityCopilot.proxy.maxRequestBodyBytes": {
-          "type": "number",
-          "default": 10485760,
-          "minimum": 262144,
-          "maximum": 52428800,
-          "description": "Absolute maximum request body size (bytes) the proxy will accept. Requests larger than this return 413 to prevent memory issues."
-        },
-        "antigravityCopilot.proxy.maxTokensThinking": {
-          "type": "number",
-          "default": 1024,
-          "minimum": 256,
-          "maximum": 8192,
-          "description": "Maximum output tokens to allow for Thinking models when proxy rewriting is enabled. Lower values reduce quota usage."
-        },
-        "antigravityCopilot.proxy.maxTokensStandard": {
-          "type": "number",
-          "default": 4096,
-          "minimum": 256,
-          "maximum": 8192,
-          "description": "Maximum output tokens to allow for non-Thinking models when proxy rewriting is enabled"
-        },
-        "antigravityCopilot.proxy.logRequests": {
-          "type": "boolean",
-          "default": true,
-          "description": "Log proxy request metadata (model, endpoint, token limits, status, duration). Does NOT log prompt text."
-        },
-        "antigravityCopilot.proxy.transformThinking": {
-          "type": "boolean",
-          "default": true,
-          "description": "Transform streaming responses from Thinking models to annotate reasoning_content for better client display"
-        },
-        "antigravityCopilot.proxy.thinkingTransformMode": {
-          "type": "string",
-          "enum": [
-            "none",
-            "annotate",
-            "enhanced",
-            "claude"
-          ],
-          "default": "none",
-          "description": "Transform mode for thinking content in streaming responses",
-          "enumDescriptions": [
-            "None: Direct passthrough without any transformation (most compatible)",
-            "Minimal: Add _is_thinking markers to delta objects",
-            "Enhanced: Add comprehensive thinking block markers in OpenAI format",
-            "Claude: Full conversion to Anthropic/Claude streaming format (experimental)"
-          ]
-        },
-        "antigravityCopilot.proxy.thinkingTimeoutMs": {
-          "type": "number",
-          "default": 60000,
-          "minimum": 10000,
-          "maximum": 300000,
-          "description": "Timeout in milliseconds for Thinking model requests. Aborts long-running requests to prevent quota exhaustion. (default: 60s)"
-        },
-        "antigravityCopilot.proxy.requestTimeoutMs": {
-          "type": "number",
-          "default": 120000,
-          "minimum": 10000,
-          "maximum": 300000,
-          "description": "Timeout in milliseconds for standard model requests. (default: 120s)"
-        },
-        "antigravityCopilot.proxy.thinkingConcurrency": {
-          "type": "number",
-          "default": 1,
-          "minimum": 1,
-          "maximum": 5,
-          "description": "Maximum concurrent requests for Thinking models. Keep low (1-2) to avoid upstream quota exhaustion."
-        },
-        "antigravityCopilot.proxy.standardConcurrency": {
-          "type": "number",
-          "default": 3,
-          "minimum": 1,
-          "maximum": 10,
-          "description": "Maximum concurrent requests for standard (non-Thinking) models."
-        },
-        "antigravityCopilot.proxy.maxRetries": {
-          "type": "number",
-          "default": 5,
-          "minimum": 0,
-          "maximum": 10,
-          "description": "Maximum retry attempts for 429/RESOURCE_EXHAUSTED errors. Uses aggressive short-delay retries like Antigravity IDE."
-        },
-        "antigravityCopilot.proxy.retryBaseDelayMs": {
-          "type": "number",
-          "default": 100,
-          "minimum": 50,
-          "maximum": 10000,
-          "description": "Base delay (ms) before first retry. Almost immediate like Antigravity IDE, then exponential backoff."
-        },
-        "antigravityCopilot.proxy.ssePreflightEnabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable SSE preflight check to detect empty streaming responses. Disable if experiencing issues with certain models."
-        },
-        "antigravityCopilot.defaultEnabledModels": {
-          "type": "array",
-          "default": [
-            "gemini-claude-opus-4-5-thinking",
-            "gemini-3-pro-preview",
-            "gemini-3-flash-preview"
-          ],
-          "description": "Model IDs to highlight in post-configuration guidance"
+          "default": null,
+          "description": "Path to the GitHub Copilot CLI executable"
         }
       }
     },
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "antigravity-copilot",
-          "title": "Antigravity",
+          "id": "copilot-openroute",
+          "title": "OpenRoute",
           "icon": "media/icon.svg"
         }
       ]
     },
     "views": {
-      "antigravity-copilot": [
+      "copilot-openroute": [
         {
           "type": "webview",
-          "id": "antigravity-copilot.sidebarView",
-          "name": "Dashboard"
+          "id": "copilot-openroute.sidebarView",
+          "name": "Dashboard",
+          "icon": "media/icon.svg"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "openroute.showDashboard",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+alt+a",
+        "when": "editorTextFocus"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -304,22 +99,25 @@
     "package": "vsce package",
     "lint": "eslint src --ext ts"
   },
-  "dependencies": {
-    "yauzl": "^2.10.0"
-  },
   "devDependencies": {
-    "@types/yauzl": "^2.10.3",
-    "@types/node": "^20.x",
+    "@types/node": "^20.19.30",
+    "@types/node-fetch": "^2.6.13",
     "@types/vscode": "^1.95.0",
+    "@types/yauzl": "^2.10.3",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
+    "@vscode/vsce": "^2.22.0",
     "esbuild": "^0.27.2",
     "eslint": "^8.56.0",
-    "typescript": "~5.5.4",
-    "@vscode/vsce": "^2.22.0"
+    "typescript": "~5.5.4"
   },
-  "repository": "https://github.com/punal100/antigravity-copilot",
-  "homepage": "https://github.com/punal100/antigravity-copilot#readme",
-  "bugs": "https://github.com/punal100/antigravity-copilot/issues",
-  "license": "MIT"
+  "repository": "https://github.com/punal100/copilot-openroute",
+  "homepage": "https://github.com/punal100/copilot-openroute#readme",
+  "bugs": "https://github.com/punal100/copilot-openroute/issues",
+  "license": "MIT",
+  "dependencies": {
+    "@github/copilot-sdk": "^0.1.17",
+    "node-fetch": "^3.3.2",
+    "yauzl": "^3.2.0"
+  }
 }
