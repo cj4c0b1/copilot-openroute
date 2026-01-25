@@ -103,7 +103,7 @@ export class DashboardSidebarProvider implements vscode.WebviewViewProvider {
 
     private async _getHtmlForWebview(): Promise<string> {
         const status = this._gateway.getStatus();
-        const models = await this._gateway.getModels();
+        const modelsWithCaps = await this._gateway.getModelsWithCapabilities();
         const isRunning = status.running;
         const nonce = getNonce();
 
@@ -195,15 +195,39 @@ export class DashboardSidebarProvider implements vscode.WebviewViewProvider {
                 </div>
 
                 <div class="card">
-                    <h3>🤖 Available Models (${models.length})</h3>
+                    <h3>🤖 Available Models (${modelsWithCaps.length})</h3>
                     <div class="model-list">
-                        ${models.length > 0 ? models.map(m => `
+                        ${modelsWithCaps.length > 0 ? modelsWithCaps.map(m => `
                             <div class="model-item">
-                                <span class="model-name">${m}</span>
-                                ${m.toLowerCase().includes('claude') || m.toLowerCase().includes('gpt-4') ? '<span class="model-badge badge-tool">Tools</span>' : ''}
+                                <span class="model-name">${m.id}</span>
+                                <div style="display: flex; gap: 4px;">
+                                    ${m.tools ? '<span class="model-badge badge-tool">Tools</span>' : ''}
+                                    ${m.vision ? '<span class="model-badge badge-vision">Vision</span>' : ''}
+                                    ${m.thinking ? '<span class="model-badge badge-thinking">Thinking</span>' : ''}
+                                </div>
                             </div>
                         `).join('') : '<div style="padding: 8px; font-size: 11px; opacity: 0.6;">No models available. Please login.</div>'}
                     </div>
+                </div>
+
+                <div class="card">
+                    <h3>🚀 Quick Setup</h3>
+                    <ol style="margin-left: 16px; font-size: 11px; line-height: 1.6; opacity: 0.9;">
+                        <li>Click <strong>"Login to GitHub Copilot"</strong> to authenticate</li>
+                        <li>Start the server using the <strong>"▶️ Start Server"</strong> button</li>
+                        <li>The gateway fetches your available models automatically</li>
+                        <li>Point your tool to <code style="background: var(--vscode-editor-background); padding: 2px 4px; border-radius: 2px;">http://localhost:${status.port}/v1</code></li>
+                        <li>Use any API key (e.g., "openroute") and select a model</li>
+                    </ol>
+                </div>
+
+                <div class="card">
+                    <h3>📋 Requirements</h3>
+                    <ul style="margin-left: 16px; font-size: 11px; line-height: 1.8; opacity: 0.9;">
+                        <li>GitHub Copilot Pro or Free subscription</li>
+                        <li>VS Code extension installed and activated</li>
+                        <li>Copilot CLI installed (auto-detected)</li>
+                    </ul>
                 </div>
 
                 <div class="card">
@@ -211,6 +235,12 @@ export class DashboardSidebarProvider implements vscode.WebviewViewProvider {
                     <div class="resource-list">
                         <a class="resource-link" href="#" onclick="openExternal('https://github.com/punal100/copilot-openroute')">
                             <span>📦 Repository</span>
+                        </a>
+                        <a class="resource-link" href="#" onclick="openExternal('https://github.com/punal100/copilot-openroute/issues')">
+                            <span>🐛 Issues</span>
+                        </a>
+                        <a class="resource-link" href="#" onclick="openExternal('https://docs.github.com/en/copilot/overview-of-github-copilot')">
+                            <span>📚 Copilot Docs</span>
                         </a>
                     </div>
                 </div>

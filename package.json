@@ -2,7 +2,7 @@
   "name": "copilot-openroute",
   "displayName": "Copilot OpenRoute",
   "description": "OpenRoute Gateway for GitHub Copilot: Use Copilot models in any OpenAI-compatible tool",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "punal100",
   "icon": "media/icon.png",
   "engines": {
