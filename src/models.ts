@@ -150,6 +150,14 @@ export const MODEL_LIST: ModelInfo[] = [
     { id: "gpt-oss-120b-medium", name: "gpt-oss-120b-medium", toolCalling: false, vision: true, thinking: false }
 ];
 
+export const OPENROUTE_FREE_MODELS = [
+    "openai/gpt-4.1-mini",
+    "openai/gpt-4o-mini",
+    "google/gemini-2.0-flash-001",
+    "meta-llama/llama-3.1-8b-instruct",
+    "mistralai/mistral-small-3.1-24b-instruct"
+];
+
 interface OpenAIModelsResponse {
     data: Array<{
         id: string;

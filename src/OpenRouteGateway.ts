@@ -8,6 +8,7 @@ import { CopilotClient, CopilotSession } from "@github/copilot-sdk";
 import { ThinkingAdapter } from "./logic/ThinkingAdapter";
 import { DeviceCodeManager } from "./logic/DeviceCodeManager";
 import { ToolRegistry } from "./logic/ToolRegistry";
+import { OPENROUTE_MODELS, OPENROUTE_FREE_MODELS } from "./models";
 
 interface OpenAIMessage {
   role: string;
@@ -209,6 +210,24 @@ export class OpenRouteGateway {
         return `${m.role.toUpperCase()}: ${content}`;
       })
       .join("\n\n");
+  }
+
+  // Helper: Truncate conversation history to fit within token limits with safety margin
+  private truncateHistory(
+    messages: OpenAIMessage[],
+    maxTokens: number,
+    tokenEstimator: (msg: OpenAIMessage) => number
+  ): OpenAIMessage[] {
+    let total = 0;
+    const truncated: OpenAIMessage[] = [];
+    // Always keep the system message and the last user message
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const cost = tokenEstimator(messages[i]);
+      if (total + cost > maxTokens * 0.8) break;
+      truncated.unshift(messages[i]);
+      total += cost;
+    }
+    return truncated;
   }
 
 
@@ -451,6 +470,82 @@ export class OpenRouteGateway {
     return null;
   }
 
+  private getConfiguredProvider(): "copilot" | "openai-compatible" {
+    const provider = vscode.workspace
+      .getConfiguration("openroute.server")
+      .get<string>("provider", "copilot");
+
+    return provider === "openai-compatible" ? "openai-compatible" : "copilot";
+  }
+
+  private getOpenAICompatibleConfig(): { baseUrl: string; apiKey: string; models: string[] } {
+    const config = vscode.workspace.getConfiguration("openroute.server");
+    const customModels = config.get<string[]>("customModels", []);
+    const baseUrl = (config.get<string>("openaiBaseUrl", "https://openrouter.ai/api/v1") || "").trim();
+    const apiKey = (config.get<string>("openaiApiKey", "") || "").trim();
+    const models = (customModels && customModels.length > 0 ? customModels : [...OPENROUTE_FREE_MODELS]).filter(Boolean);
+
+    return { baseUrl, apiKey, models };
+  }
+
+  private shouldRouteToOpenAICompatible(modelId?: string): boolean {
+    if (!modelId) return false;
+    if (this.getConfiguredProvider() !== "openai-compatible") return false;
+
+    const { models } = this.getOpenAICompatibleConfig();
+    return models.includes(modelId);
+  }
+
+  private async forwardToOpenAICompatible(body: OpenAIRequest, res: http.ServerResponse) {
+    const { baseUrl, apiKey } = this.getOpenAICompatibleConfig();
+    const endpoint = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    if (apiKey) {
+      headers.Authorization = `Bearer ${apiKey}`;
+    }
+
+    this.log(`Forwarding request to OpenAI-compatible endpoint: ${endpoint}`);
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (body.stream && response.body) {
+      res.writeHead(response.status, {
+        "Content-Type": response.headers.get("content-type") || "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      });
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          res.write(decoder.decode(value, { stream: true }));
+        }
+      }
+
+      res.write(decoder.decode());
+      res.end();
+      return;
+    }
+
+    const responseText = await response.text();
+    res.writeHead(response.status, {
+      "Content-Type": response.headers.get("content-type") || "application/json",
+    });
+    res.end(responseText);
+  }
+
   public async start(retryCount = 0): Promise<void> {
     const MAX_RETRIES = 10;
 
@@ -459,27 +554,31 @@ export class OpenRouteGateway {
       return;
     }
 
-    if (!this.client) {
-      this.initClient();
-    }
-
-    if (!this.client) {
-      throw new Error(
-        `Copilot CLI binary not found at: ${this.executablePath || "default locations"}. Please install.`,
-      );
-    }
-
-    try {
-      if (retryCount === 0) {
-        await this.client.start();
-        this.log("Copilot SDK Client started");
+    if (this.getConfiguredProvider() === "openai-compatible") {
+      this.log("OpenAI-compatible provider configured; skipping Copilot SDK startup.");
+    } else {
+      if (!this.client) {
+        this.initClient();
       }
-    } catch (err) {
-      this.log(`Failed to start Copilot SDK Client: ${err}`, "error");
-      if ((err as any).code === "ENOENT") {
-        throw new Error("Copilot CLI executable not found in PATH.");
+
+      if (!this.client) {
+        throw new Error(
+          `Copilot CLI binary not found at: ${this.executablePath || "default locations"}. Please install.`,
+        );
       }
-      throw err;
+
+      try {
+        if (retryCount === 0) {
+          await this.client.start();
+          this.log("Copilot SDK Client started");
+        }
+      } catch (err) {
+        this.log(`Failed to start Copilot SDK Client: ${err}`, "error");
+        if ((err as any).code === "ENOENT") {
+          throw new Error("Copilot CLI executable not found in PATH.");
+        }
+        throw err;
+      }
     }
 
     return new Promise((resolve, reject) => {
@@ -537,14 +636,18 @@ export class OpenRouteGateway {
     res: http.ServerResponse,
   ) {
     try {
-      const models = await this.getModels();
+      const provider = this.getConfiguredProvider();
+      const models = provider === "openai-compatible"
+        ? this.getOpenAICompatibleConfig().models
+        : await this.getModels();
+
       const response = {
         object: "list",
         data: models.map((id) => ({
           id,
           object: "model",
           created: Date.now(),
-          owned_by: "copilot-openroute",
+          owned_by: provider === "openai-compatible" ? "openai-compatible" : "copilot-openroute",
         })),
       };
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -604,6 +707,11 @@ export class OpenRouteGateway {
     this.log(
       `Incoming request paths: ${body.messages.map((m) => m.role).join(" -> ")}`,
     );
+
+    if (this.shouldRouteToOpenAICompatible(body.model)) {
+      await this.forwardToOpenAICompatible(body, res);
+      return;
+    }
 
     // --- FIX 1: Context Management ---
     // Separate the messages into:
@@ -683,6 +791,18 @@ export class OpenRouteGateway {
     }
 
     this.log(`Temp dir is: ${os.tmpdir()}`, "info");
+
+    // --- FIX 1a: Context Management (Token-aware truncation) ---
+    // Get active model's context window for history truncation safety
+    const modelId = body.model;
+    const modelConfig = OPENROUTE_MODELS[modelId];
+    const modelMaxInputTokens = modelConfig?.maxInputTokens || 128000; // fallback 128k tokens
+    const maxTokens = Math.floor(modelMaxInputTokens * 0.8); // Use 80% as safety margin
+
+    const tokenEstimator = (msg: OpenAIMessage) => Math.ceil(JSON.stringify(msg).length / 4);
+
+    // Determine safe history size for the prompt injection
+    const safeHistoryMessages = this.truncateHistory(historyMessages, maxTokens, tokenEstimator);
 
     // --- FIX 1b: Context Stuffing ---
     // Since we create a fresh session for every stateless request, we must inject the history
